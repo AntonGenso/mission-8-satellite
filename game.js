@@ -6,7 +6,6 @@ const ctx = canvas.getContext('2d');
 // === Состояние ===
 let W, H, CX, CY, ORBIT_R, SHIELD_R, SAT_SCALE;
 let running = false, score = 0, hp = 3, maxHp = 3, wave = 1;
-let combo = 0, comboTimer = 0;
 let satAngle = -Math.PI / 2, shdAngle = Math.PI / 2;
 let satSpeed = 0, shdSpeed = 0;
 const ROT_SPEED = 2.8, DAMPING = 0.88;
@@ -20,10 +19,8 @@ const VICTORY_SCORE = 100;
 let shieldHp = 100;
 const SHIELD_MAX_HP = 100, SHIELD_DECAY_RATE = 1.2, SHIELD_BLOCK_DAMAGE = 8, SHIELD_REPAIR_AMOUNT = 30;
 
-// Балансировка очков (медленный набор до 100, ~4-6 минут)
-const SCORE_VALUES = { crystal: 3, data: 5, satellite: 10, repair: 2 };
-const SCORE_BLOCK = 1;
-const COMBO_MAX = 3;
+// Балансировка очков (1 балл за любой собранный элемент, без комбо)
+const SCORE_VALUES = { crystal: 1, data: 1, satellite: 1, repair: 1 };
 
 const inputState = { 'sat-ccw': false, 'sat-cw': false, 'shd-ccw': false, 'shd-cw': false };
 
@@ -279,8 +276,20 @@ function drawShieldWarning() {
 
 // === Game Logic ===
 function spawnMeteor() {
-  const angle = Math.random() * Math.PI * 2, dist = Math.max(W, H) * 0.7;
-  const x = CX + Math.cos(angle) * dist, y = CY + Math.sin(angle) * dist;
+  // Угол спавна равномерно по всему кругу — метеориты прилетают со всех сторон
+  const angle = Math.random() * Math.PI * 2;
+  // Расстояние от центра до самой дальней точки экрана + запас, чтобы метеорит
+  // гарантированно был за экраном и не появлялся внутри видимой области
+  const corner1 = Math.sqrt(CX * CX + CY * CY);
+  const corner2 = Math.sqrt((W - CX) ** 2 + CY * CY);
+  const corner3 = Math.sqrt(CX * CX + (H - CY) ** 2);
+  const corner4 = Math.sqrt((W - CX) ** 2 + (H - CY) ** 2);
+  const maxCornerDist = Math.max(corner1, corner2, corner3, corner4);
+  const dist = maxCornerDist + 60;
+
+  const x = CX + Math.cos(angle) * dist;
+  const y = CY + Math.sin(angle) * dist;
+  // Прицеливание в центр спутника с небольшим разбросом
   const aimAngle = Math.atan2(CY - y, CX - x) + (Math.random() - 0.5) * 0.4;
   const speed = 60 + wave * 8 + Math.random() * 30, r = 8 + Math.random() * 6;
   const shape = [], verts = 6 + Math.floor(Math.random() * 4);
@@ -374,12 +383,6 @@ function updateShieldHPBar() {
   else fill.style.background = 'linear-gradient(90deg,#ff2200,#ff4411)';
 }
 
-function updateGoalBar() {
-  const fill = document.getElementById('goalBarFill');
-  const pct = Math.max(0, Math.min(100, (score / VICTORY_SCORE) * 100));
-  fill.style.width = pct + '%';
-}
-
 function update(dt) {
   time += dt; waveTimer += dt;
   if (waveTimer > WAVE_DURATION) {
@@ -431,7 +434,6 @@ function update(dt) {
         addFloatingText(m.x, m.y - 20, t('blocked'), '#ffaa44', 14);
         Audio.shieldBlock();
       }
-      score += SCORE_BLOCK;
       meteors.splice(i, 1); continue;
     }
     const hitR = 14 * SAT_SCALE;
@@ -441,7 +443,7 @@ function update(dt) {
       addFloatingText(CX, CY - 30, t('damageText'), '#ff4466', 18);
       updateHP();
       Audio.damage();
-      meteors.splice(i, 1); combo = 0;
+      meteors.splice(i, 1);
       if (hp <= 0) { gameOver(); return; }
       continue;
     }
@@ -464,9 +466,7 @@ function update(dt) {
       c.collected = true;
       const colors = { crystal: '#dd88ff', data: '#44ff88', satellite: '#ffcc00', repair: '#ffaa33' };
       const names = { crystal: '💎', data: '📦', satellite: '🛰', repair: '🔧' };
-      combo++; comboTimer = 2;
-      const mult = Math.min(combo, COMBO_MAX);
-      const pts = SCORE_VALUES[c.type] * mult;
+      const pts = SCORE_VALUES[c.type];
       score += pts;
 
       if (c.type === 'repair') {
@@ -492,13 +492,6 @@ function update(dt) {
     }
   }
 
-  if (comboTimer > 0) { comboTimer -= dt; if (comboTimer <= 0) combo = 0; }
-  const comboEl = document.getElementById('comboDisplay');
-  if (combo > 1) {
-    comboEl.textContent = `COMBO x${Math.min(combo, COMBO_MAX)}`;
-    comboEl.classList.add('visible');
-  } else comboEl.classList.remove('visible');
-
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i]; p.x += p.dx * dt; p.y += p.dy * dt;
     p.life -= p.decay * dt; if (p.life <= 0) particles.splice(i, 1);
@@ -515,7 +508,6 @@ function update(dt) {
   shieldFlash = Math.max(0, shieldFlash - dt * 4);
   damageFlash = Math.max(0, damageFlash - dt * 2);
   document.getElementById('scoreValue').textContent = score;
-  updateGoalBar();
   for (const s of stars) s.a = 0.3 + Math.sin(time * s.speed + s.x) * 0.3;
 }
 
@@ -548,12 +540,12 @@ function showScreen(id) {
 }
 
 function startGame() {
-  score = 0; hp = maxHp; wave = 1; combo = 0; comboTimer = 0; waveTimer = 0;
+  score = 0; hp = maxHp; wave = 1; waveTimer = 0;
   satAngle = -Math.PI / 2; shdAngle = Math.PI / 2; satSpeed = 0; shdSpeed = 0;
   meteors = []; collectibles = []; particles = []; signals = []; floatingTexts = [];
   spawnTimer = 0; collectSpawnTimer = 0; shieldFlash = 0; damageFlash = 0; time = 0;
   shieldHp = SHIELD_MAX_HP;
-  updateHP(); updateShieldHPBar(); updateGoalBar();
+  updateHP(); updateShieldHPBar();
   document.getElementById('scoreValue').textContent = '0';
   document.getElementById('waveValue').textContent = '1';
   showScreen(null);

@@ -24,10 +24,6 @@
   .shield-hp-bar { width: 70px; height: 8px; background: rgba(255,102,68,0.15); border-radius: 4px; border: 1px solid rgba(255,102,68,0.3); overflow: hidden; }
   .shield-hp-fill { height: 100%; background: linear-gradient(90deg, #ff4422, #ff8844); border-radius: 4px; transition: width 0.3s; box-shadow: 0 0 6px #ff664488; }
 
-  /* Прогресс-бар цели */
-  .goal-bar-container { position: absolute; top: 56px; left: 50%; transform: translateX(-50%); width: 140px; height: 6px; background: rgba(0,255,204,0.1); border-radius: 3px; border: 1px solid rgba(0,255,204,0.25); overflow: hidden; }
-  .goal-bar-fill { height: 100%; background: linear-gradient(90deg, #00ffcc, #00ccff); border-radius: 3px; transition: width 0.4s; box-shadow: 0 0 6px #00ffcc88; }
-
   /* Кнопки управления */
   .controls { position: absolute; bottom: 0; left: 0; width: 100%; height: 120px; display: flex; justify-content: space-between; align-items: center; padding: 0 12px 20px; pointer-events: auto; }
   .ctrl-group { display: flex; flex-direction: column; align-items: center; gap: 4px; }
@@ -93,8 +89,8 @@
     position: relative; z-index: 1;
     display: flex; flex-direction: column; align-items: center;
     width: 100%;
-    margin-bottom: 12px;
-    gap: 10px;
+    margin-bottom: 12vh;
+    gap: 14px;
   }
   .greeting { font-family: 'Orbitron', monospace; font-size: 13px; color: #ffe082; text-shadow: 0 2px 8px rgba(0,0,0,0.9); text-align: center; padding: 0 16px; }
   .lang-switcher { display: flex; gap: 6px; }
@@ -114,10 +110,6 @@
   .final-meta { font-size: 12px; color: #99aabb; margin-bottom: 24px; letter-spacing: 1px; }
   .final-buttons { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
   .game-subtitle { font-size: 13px; color: #aabbcc; margin-bottom: 24px; text-align: center; padding: 0 20px; line-height: 1.6; max-width: 340px; }
-
-  /* Combo индикатор */
-  .combo-display { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); font-family: 'Orbitron', monospace; font-size: 14px; font-weight: 700; color: #ffcc00; text-shadow: 0 0 10px #ffcc0088; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
-  .combo-display.visible { opacity: 1; }
 
   /* === Loader экран === */
   #loaderScreen {
@@ -191,14 +183,12 @@
     <span id="scoreValue">0</span>
     <span class="goal"><span data-i18n="goalLabel">ЦЕЛЬ</span>: 100</span>
   </div>
-  <div class="goal-bar-container"><div class="goal-bar-fill" id="goalBarFill" style="width:0%"></div></div>
   <div class="level-display"><span data-i18n="waveLabel">ВОЛНА</span> <span id="waveValue">1</span></div>
   <div class="hp-bar-container" id="hpBar"></div>
   <div class="shield-hp-container">
     <span class="shield-hp-label">🛡</span>
     <div class="shield-hp-bar"><div class="shield-hp-fill" id="shieldHpFill" style="width:100%"></div></div>
   </div>
-  <div class="combo-display" id="comboDisplay"></div>
   <div class="controls">
     <div class="ctrl-group">
       <span class="ctrl-label satellite" data-i18n="satCtrl">СПУТНИК</span>
