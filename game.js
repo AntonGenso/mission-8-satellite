@@ -40,7 +40,16 @@ function resize() {
 
 function generateStars() {
   stars = [];
-  for (let i = 0; i < 120; i++) stars.push({ x: Math.random() * W, y: Math.random() * H, r: Math.random() * 1.5 + 0.3, a: Math.random(), speed: Math.random() * 0.3 + 0.1 });
+  for (let i = 0; i < 120; i++) stars.push({
+    x: Math.random() * W,
+    y: Math.random() * H,
+    r: Math.random() * 1.5 + 0.3,
+    a: Math.random(),
+    speed: Math.random() * 0.3 + 0.1,
+    // Скорость дрейфа снизу вверх (px/sec). Маленькие звёзды двигаются медленнее,
+    // крупные — быстрее, для эффекта параллакса
+    vy: 8 + Math.random() * 18
+  });
 }
 
 function drawStar(x, y, r, alpha) {
@@ -278,20 +287,16 @@ function drawShieldWarning() {
 function spawnMeteor() {
   // Угол спавна равномерно по всему кругу — метеориты прилетают со всех сторон
   const angle = Math.random() * Math.PI * 2;
-  // Расстояние от центра до самой дальней точки экрана + запас, чтобы метеорит
-  // гарантированно был за экраном и не появлялся внутри видимой области
-  const corner1 = Math.sqrt(CX * CX + CY * CY);
-  const corner2 = Math.sqrt((W - CX) ** 2 + CY * CY);
-  const corner3 = Math.sqrt(CX * CX + (H - CY) ** 2);
-  const corner4 = Math.sqrt((W - CX) ** 2 + (H - CY) ** 2);
-  const maxCornerDist = Math.max(corner1, corner2, corner3, corner4);
-  const dist = maxCornerDist + 60;
-
-  const x = CX + Math.cos(angle) * dist;
-  const y = CY + Math.sin(angle) * dist;
-  // Прицеливание в центр спутника с небольшим разбросом
-  const aimAngle = Math.atan2(CY - y, CX - x) + (Math.random() - 0.5) * 0.4;
-  const speed = 60 + wave * 8 + Math.random() * 30, r = 8 + Math.random() * 6;
+  // Спавн на эллипсе, который чуть больше экрана. Это даёт примерно одинаковое
+  // время полёта для метеоритов со всех направлений (а не только сверху/снизу).
+  // Радиусы — половина ширины/высоты + запас.
+  const rx = W / 2 + 80;
+  const ry = H / 2 + 80;
+  const x = CX + Math.cos(angle) * rx;
+  const y = CY + Math.sin(angle) * ry;
+  // Точное прицеливание в спутник с очень малым разбросом — метеориты летят прямо в цель
+  const aimAngle = Math.atan2(CY - y, CX - x) + (Math.random() - 0.5) * 0.15;
+  const speed = 80 + wave * 10 + Math.random() * 30, r = 8 + Math.random() * 6;
   const shape = [], verts = 6 + Math.floor(Math.random() * 4);
   for (let i = 0; i < verts; i++) {
     const a = (i / verts) * Math.PI * 2, d = r * (0.7 + Math.random() * 0.3);
@@ -403,15 +408,18 @@ function update(dt) {
   shieldHp = Math.max(0, shieldHp - SHIELD_DECAY_RATE * dt);
   updateShieldHPBar();
 
-  const baseInterval = Math.max(0.35, 2.0 - wave * 0.15);
+  // Спавн метеоритов — постоянный темп без провисов
+  // Волна 1: 1.2 сек между, к волне 5: 0.6 сек, к волне 10+: 0.35 сек
+  const baseInterval = Math.max(0.35, 1.2 - wave * 0.1);
   spawnTimer += dt;
   if (spawnTimer > baseInterval) {
     spawnTimer = 0;
     spawnMeteor();
-    if (wave >= 2 && Math.random() < 0.25) spawnMeteor();
-    if (wave >= 4 && Math.random() < 0.35) spawnMeteor();
-    if (wave >= 6 && Math.random() < 0.4) spawnMeteor();
-    if (wave >= 8 && Math.random() < 0.5) spawnMeteor();
+    // Дополнительные метеориты в одной "пачке" — чем выше волна, тем гуще
+    if (wave >= 2 && Math.random() < 0.35) spawnMeteor();
+    if (wave >= 4 && Math.random() < 0.45) spawnMeteor();
+    if (wave >= 6 && Math.random() < 0.5) spawnMeteor();
+    if (wave >= 8 && Math.random() < 0.6) spawnMeteor();
   }
 
   const collectInterval = Math.max(1.5, 3.5 - wave * 0.1);
@@ -508,7 +516,16 @@ function update(dt) {
   shieldFlash = Math.max(0, shieldFlash - dt * 4);
   damageFlash = Math.max(0, damageFlash - dt * 2);
   document.getElementById('scoreValue').textContent = score;
-  for (const s of stars) s.a = 0.3 + Math.sin(time * s.speed + s.x) * 0.3;
+  // Звёзды: мерцание + медленный дрейф снизу вверх (эффект движения)
+  for (const s of stars) {
+    s.a = 0.3 + Math.sin(time * s.speed + s.x) * 0.3;
+    s.y -= s.vy * dt;
+    if (s.y < -5) {
+      // Респавн снизу с новой случайной X-позицией
+      s.y = H + 5;
+      s.x = Math.random() * W;
+    }
+  }
 }
 
 function draw() {
