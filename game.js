@@ -296,7 +296,12 @@ function spawnMeteor() {
   const y = CY + Math.sin(angle) * ry;
   // Точное прицеливание в спутник с очень малым разбросом — метеориты летят прямо в цель
   const aimAngle = Math.atan2(CY - y, CX - x) + (Math.random() - 0.5) * 0.15;
-  const speed = 80 + wave * 10 + Math.random() * 30, r = 8 + Math.random() * 6;
+  // Скорость растёт плавно по игровому времени: 70 → 130 за первые 60 сек
+  // + бонус при счёте >= 90 (финальный челлендж)
+  const speedT = Math.min(1, time / 60);
+  let speed = 70 + speedT * 60 + Math.random() * 25;
+  if (score >= 90) speed *= 1.15;
+  const r = 8 + Math.random() * 6;
   const shape = [], verts = 6 + Math.floor(Math.random() * 4);
   for (let i = 0; i < verts; i++) {
     const a = (i / verts) * Math.PI * 2, d = r * (0.7 + Math.random() * 0.3);
@@ -408,21 +413,43 @@ function update(dt) {
   shieldHp = Math.max(0, shieldHp - SHIELD_DECAY_RATE * dt);
   updateShieldHPBar();
 
-  // Спавн метеоритов — постоянный темп без провисов
-  // Волна 1: 1.2 сек между, к волне 5: 0.6 сек, к волне 10+: 0.35 сек
-  const baseInterval = Math.max(0.35, 1.2 - wave * 0.1);
+  // Кривая сложности по игровому времени:
+  //   0-10 сек:  тишина — игрок осваивается, собирает очки
+  //   10-20 сек: редкие метеориты (интервал ~2.5 сек, одиночные)
+  //   20-40 сек: постепенное уплотнение
+  //   40+ сек:   полноценный темп, добавляются пачки
+  //   score>=90: финальный челлендж — максимальная сложность
   spawnTimer += dt;
-  if (spawnTimer > baseInterval) {
+  if (time >= 10) {
+    // Базовый интервал плавно сокращается с 2.5 сек до 0.5 сек на 40-й секунде
+    const t40 = Math.min(1, (time - 10) / 30); // 0 на 10-й сек, 1 на 40-й сек
+    let baseInterval = 2.5 - t40 * 2.0; // 2.5 → 0.5
+    // Финальный челлендж при счёте >= 90: ещё на 30% быстрее
+    if (score >= 90) baseInterval *= 0.7;
+    baseInterval = Math.max(0.35, baseInterval);
+
+    if (spawnTimer > baseInterval) {
+      spawnTimer = 0;
+      spawnMeteor();
+      // Пачки метеоритов появляются только после 30 сек, шанс растёт со временем
+      const packT = Math.min(1, Math.max(0, (time - 30) / 30)); // 0 на 30 сек, 1 на 60 сек
+      if (time >= 30 && Math.random() < 0.3 * packT) spawnMeteor();
+      if (time >= 50 && Math.random() < 0.4 * packT) spawnMeteor();
+      // Финальный челлендж: гарантированная пачка
+      if (score >= 90 && Math.random() < 0.6) spawnMeteor();
+    }
+  } else {
+    // В первые 10 сек таймер сбрасывается, чтобы первый метеор пришёл сразу после 10 сек
     spawnTimer = 0;
-    spawnMeteor();
-    // Дополнительные метеориты в одной "пачке" — чем выше волна, тем гуще
-    if (wave >= 2 && Math.random() < 0.35) spawnMeteor();
-    if (wave >= 4 && Math.random() < 0.45) spawnMeteor();
-    if (wave >= 6 && Math.random() < 0.5) spawnMeteor();
-    if (wave >= 8 && Math.random() < 0.6) spawnMeteor();
   }
 
-  const collectInterval = Math.max(1.5, 3.5 - wave * 0.1);
+  // Collectibles: чаще в первые 10 сек (обучающая фаза), потом стандартный темп
+  let collectInterval;
+  if (time < 10) {
+    collectInterval = 1.5; // быстрый поток, игрок учится собирать
+  } else {
+    collectInterval = Math.max(1.8, 3.0 - wave * 0.1);
+  }
   collectSpawnTimer += dt;
   if (collectSpawnTimer > collectInterval) { collectSpawnTimer = 0; spawnCollectible(); }
 
