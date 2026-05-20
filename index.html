@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+<title>Mission 8 — Satellite</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;700&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0B1F3A; font-family: 'Exo 2', sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  /* === In-game UI === */
+  #ui-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+  .score-display { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); font-family: 'Orbitron', monospace; font-size: 18px; font-weight: 900; color: #00ffcc; text-shadow: 0 0 10px #00ffcc88, 0 0 20px #00ffcc44; letter-spacing: 2px; text-align: center; }
+  .score-display .label { font-size: 10px; font-weight: 400; color: #00ffcc88; letter-spacing: 4px; display: block; margin-bottom: 2px; }
+  .score-display .goal { font-size: 9px; font-weight: 400; color: #00ffcc66; letter-spacing: 2px; display: block; margin-top: 2px; }
+  .hp-bar-container { position: absolute; top: 12px; right: 12px; display: flex; gap: 4px; align-items: center; }
+  .hp-heart { font-size: 18px; filter: drop-shadow(0 0 4px #ff4466); transition: transform 0.3s, opacity 0.3s; }
+  .hp-heart.lost { opacity: 0.2; transform: scale(0.7); }
+  .level-display { position: absolute; top: 14px; left: 12px; font-family: 'Orbitron', monospace; font-size: 11px; color: #aa88ff; text-shadow: 0 0 8px #aa88ff66; }
+  .shield-hp-container { position: absolute; top: 38px; right: 12px; display: flex; align-items: center; gap: 6px; }
+  .shield-hp-label { font-family: 'Orbitron', monospace; font-size: 9px; color: #ff6644; letter-spacing: 1px; }
+  .shield-hp-bar { width: 70px; height: 8px; background: rgba(255,102,68,0.15); border-radius: 4px; border: 1px solid rgba(255,102,68,0.3); overflow: hidden; }
+  .shield-hp-fill { height: 100%; background: linear-gradient(90deg, #ff4422, #ff8844); border-radius: 4px; transition: width 0.3s; box-shadow: 0 0 6px #ff664488; }
+
+  /* Прогресс-бар цели */
+  .goal-bar-container { position: absolute; top: 56px; left: 50%; transform: translateX(-50%); width: 140px; height: 6px; background: rgba(0,255,204,0.1); border-radius: 3px; border: 1px solid rgba(0,255,204,0.25); overflow: hidden; }
+  .goal-bar-fill { height: 100%; background: linear-gradient(90deg, #00ffcc, #00ccff); border-radius: 3px; transition: width 0.4s; box-shadow: 0 0 6px #00ffcc88; }
+
+  /* Кнопки управления */
+  .controls { position: absolute; bottom: 0; left: 0; width: 100%; height: 120px; display: flex; justify-content: space-between; align-items: center; padding: 0 12px 20px; pointer-events: auto; }
+  .ctrl-group { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .ctrl-label { font-family: 'Orbitron', monospace; font-size: 9px; letter-spacing: 2px; text-transform: uppercase; }
+  .ctrl-label.satellite { color: #00ccff; } .ctrl-label.shield { color: #ff6644; }
+  .ctrl-buttons { display: flex; gap: 8px; }
+  .ctrl-btn { width: 56px; height: 56px; border-radius: 14px; border: 2px solid; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; font-size: 22px; cursor: pointer; transition: all 0.1s; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+  .ctrl-btn.sat { border-color: #00ccff66; color: #00ccff; box-shadow: 0 0 12px #00ccff22, inset 0 0 12px #00ccff11; }
+  .ctrl-btn.sat:active, .ctrl-btn.sat.pressed { background: rgba(0,204,255,0.25); box-shadow: 0 0 20px #00ccff55, inset 0 0 16px #00ccff33; transform: scale(0.93); }
+  .ctrl-btn.shd { border-color: #ff664466; color: #ff6644; box-shadow: 0 0 12px #ff664422, inset 0 0 12px #ff664411; }
+  .ctrl-btn.shd:active, .ctrl-btn.shd.pressed { background: rgba(255,102,68,0.25); box-shadow: 0 0 20px #ff664455, inset 0 0 16px #ff664433; transform: scale(0.93); }
+  .arrow-icon { width: 24px; height: 24px; }
+
+  /* Кнопка mute */
+  .mute-btn { position: fixed; top: 12px; right: 100px; width: 32px; height: 32px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.5); color: #ccc; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 200; pointer-events: auto; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); transition: all 0.2s; }
+  .mute-btn:active { transform: scale(0.92); background: rgba(255,255,255,0.1); }
+  .mute-btn.muted { color: #666; }
+  .screen-overlay .mute-btn { top: 16px; right: 16px; }
+
+  /* === Стартовый экран с фоном === */
+  .screen-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; pointer-events: auto; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+  .screen-overlay.hidden { display: none; }
+  /* Финальные экраны — без картинки, тёмный полупрозрачный фон */
+  .screen-overlay.dim { background: rgba(0,0,10,0.92); backdrop-filter: blur(8px); justify-content: center; }
+
+  /* Стартовый экран — поверх фоновой картинки */
+  #startScreen {
+    background-image: url('menu-bg.jpg');
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+    background-color: #0B1F3A;
+    justify-content: space-between;
+  }
+  /* Лёгкий затенитель сверху — для читаемости заголовка */
+  #startScreen::before {
+    content: '';
+    position: absolute; left: 0; right: 0; top: 0; height: 18%;
+    background: linear-gradient(to top, rgba(11,31,58,0) 0%, rgba(11,31,58,0.5) 80%, rgba(11,31,58,0.75) 100%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  /* Затенитель снизу — чтобы кнопки на Луне читались */
+  #startScreen::after {
+    content: '';
+    position: absolute; left: 0; right: 0; bottom: 0; height: 42%;
+    background: linear-gradient(to bottom, rgba(11,31,58,0) 0%, rgba(11,31,58,0.55) 55%, rgba(11,31,58,0.85) 100%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Блок заголовка вверху */
+  .menu-header {
+    position: relative; z-index: 1;
+    display: flex; flex-direction: column; align-items: center;
+    margin-top: 8px;
+  }
+  .mission-label { font-family: 'Orbitron', monospace; font-size: 11px; color: #aaccff; letter-spacing: 5px; margin-bottom: 4px; text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
+  .game-title { font-family: 'Orbitron', monospace; font-size: 28px; font-weight: 900; color: #ffffff; text-shadow: 0 0 20px rgba(0,200,255,0.5), 0 2px 8px rgba(0,0,0,0.9); letter-spacing: 3px; text-align: center; }
+
+  /* Блок управления внизу */
+  .menu-footer {
+    position: relative; z-index: 1;
+    display: flex; flex-direction: column; align-items: center;
+    width: 100%;
+    margin-bottom: 12px;
+    gap: 10px;
+  }
+  .greeting { font-family: 'Orbitron', monospace; font-size: 13px; color: #ffe082; text-shadow: 0 2px 8px rgba(0,0,0,0.9); text-align: center; padding: 0 16px; }
+  .lang-switcher { display: flex; gap: 6px; }
+  .lang-btn { font-family: 'Orbitron', monospace; font-size: 12px; font-weight: 700; padding: 6px 18px; border: 1px solid rgba(255,255,255,0.3); border-radius: 8px; background: rgba(11,31,58,0.65); color: #ddeeff; cursor: pointer; letter-spacing: 2px; transition: all 0.2s; pointer-events: auto; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+  .lang-btn.active { border-color: #00ffcc; color: #00ffcc; background: rgba(0,255,204,0.15); box-shadow: 0 0 12px rgba(0,255,204,0.3); }
+
+  /* Кнопки */
+  .start-btn { font-family: 'Orbitron', monospace; font-size: 16px; font-weight: 700; padding: 14px 48px; border: 2px solid #00ffcc; border-radius: 12px; background: rgba(0,255,204,0.15); color: #00ffcc; cursor: pointer; letter-spacing: 3px; box-shadow: 0 0 20px rgba(0,255,204,0.3), 0 4px 16px rgba(0,0,0,0.4); transition: all 0.2s; pointer-events: auto; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  .start-btn:active { background: rgba(0,255,204,0.3); transform: scale(0.95); }
+  .start-btn.secondary { border-color: #aa88ff; color: #aa88ff; background: rgba(170,136,255,0.12); box-shadow: 0 0 14px rgba(170,136,255,0.25); font-size: 13px; padding: 10px 28px; }
+  .start-btn.secondary:active { background: rgba(170,136,255,0.25); }
+  .start-btn.danger { border-color: #ff4466; color: #ff4466; background: rgba(255,68,102,0.1); box-shadow: 0 0 20px rgba(255,68,102,0.2); }
+  .start-btn.danger:active { background: rgba(255,68,102,0.3); }
+
+  /* Финал */
+  .final-score { font-family: 'Orbitron', monospace; font-size: 48px; font-weight: 900; color: #ffcc00; text-shadow: 0 0 20px #ffcc0066; margin: 12px 0; }
+  .final-meta { font-size: 12px; color: #99aabb; margin-bottom: 24px; letter-spacing: 1px; }
+  .final-buttons { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .game-subtitle { font-size: 13px; color: #aabbcc; margin-bottom: 24px; text-align: center; padding: 0 20px; line-height: 1.6; max-width: 340px; }
+
+  /* Combo индикатор */
+  .combo-display { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); font-family: 'Orbitron', monospace; font-size: 14px; font-weight: 700; color: #ffcc00; text-shadow: 0 0 10px #ffcc0088; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+  .combo-display.visible { opacity: 1; }
+
+  /* === Loader экран === */
+  #loaderScreen {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: #0B1F3A;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 300;
+    transition: opacity 0.4s ease-out;
+    pointer-events: auto;
+  }
+  #loaderScreen.fade-out { opacity: 0; pointer-events: none; }
+  #loaderScreen.hidden { display: none; }
+
+  .loader-label {
+    font-family: 'Orbitron', monospace;
+    font-size: 18px;
+    font-weight: 900;
+    color: #ffffff;
+    letter-spacing: 8px;
+    margin-bottom: 24px;
+  }
+
+  /* Полоса прогресса — оранжевая, в paper-cut стиле */
+  .loader-bar {
+    width: 220px;
+    height: 6px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+  }
+  .loader-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #ff8a3c, #ffb347);
+    border-radius: 3px;
+    box-shadow: 0 0 12px rgba(255,138,60,0.5);
+    transition: width 0.2s ease-out;
+  }
+  /* Если прогресс неизвестен — индетерминантная анимация (фолбэк) */
+  .loader-bar.indeterminate .loader-bar-fill {
+    width: 35%;
+    animation: loaderSlide 1.4s ease-in-out infinite;
+    transition: none;
+  }
+  @keyframes loaderSlide {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(285%); }
+  }
+</style>
+</head>
+<body>
+
+<!-- Loader — показывается до загрузки фоновой картинки -->
+<div id="loaderScreen">
+  <div class="loader-label">LOAD</div>
+  <div class="loader-bar" id="loaderBar">
+    <div class="loader-bar-fill" id="loaderBarFill"></div>
+  </div>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<!-- Глобальная кнопка mute -->
+<div class="mute-btn" id="muteBtn">🔊</div>
+
+<!-- Игровой UI -->
+<div id="ui-overlay">
+  <div class="score-display">
+    <span class="label" data-i18n="scoreLabel">ОЧКИ</span>
+    <span id="scoreValue">0</span>
+    <span class="goal"><span data-i18n="goalLabel">ЦЕЛЬ</span>: 100</span>
+  </div>
+  <div class="goal-bar-container"><div class="goal-bar-fill" id="goalBarFill" style="width:0%"></div></div>
+  <div class="level-display"><span data-i18n="waveLabel">ВОЛНА</span> <span id="waveValue">1</span></div>
+  <div class="hp-bar-container" id="hpBar"></div>
+  <div class="shield-hp-container">
+    <span class="shield-hp-label">🛡</span>
+    <div class="shield-hp-bar"><div class="shield-hp-fill" id="shieldHpFill" style="width:100%"></div></div>
+  </div>
+  <div class="combo-display" id="comboDisplay"></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <span class="ctrl-label satellite" data-i18n="satCtrl">СПУТНИК</span>
+      <div class="ctrl-buttons">
+        <div class="ctrl-btn sat" id="satLeft" data-dir="sat-ccw">
+          <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4l-8 8 8 8"/></svg>
+        </div>
+        <div class="ctrl-btn sat" id="satRight" data-dir="sat-cw">
+          <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4l8 8-8 8"/></svg>
+        </div>
+      </div>
+    </div>
+    <div class="ctrl-group">
+      <span class="ctrl-label shield" data-i18n="shdCtrl">ЩИТ</span>
+      <div class="ctrl-buttons">
+        <div class="ctrl-btn shd" id="shdLeft" data-dir="shd-ccw">
+          <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4l-8 8 8 8"/></svg>
+        </div>
+        <div class="ctrl-btn shd" id="shdRight" data-dir="shd-cw">
+          <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4l8 8-8 8"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Стартовое меню — упрощённое, с фоновой картинкой -->
+<div class="screen-overlay hidden" id="startScreen">
+  <div class="menu-header">
+    <div class="mission-label">MISSION 8</div>
+    <div class="game-title" id="gameTitle" data-i18n="gameTitle">СПУТНИК</div>
+  </div>
+  <div class="menu-footer">
+    <div class="greeting" id="greetingText"></div>
+    <div class="lang-switcher">
+      <div class="lang-btn" id="langRu" data-lang="ru">RU</div>
+      <div class="lang-btn" id="langUz" data-lang="uz">UZ</div>
+    </div>
+    <div class="start-btn" id="startBtn" data-i18n="startBtn">СТАРТ</div>
+  </div>
+</div>
+
+<!-- Победа -->
+<div class="screen-overlay dim hidden" id="victoryScreen">
+  <div class="game-title" style="color:#ffcc00;" data-i18n="victoryTitle">ПОБЕДА</div>
+  <div class="game-subtitle" data-i18n="victorySubtitle"></div>
+  <div class="final-score" id="victoryScore">100</div>
+  <div class="final-meta"><span data-i18n="finalWaveLabel">Волна</span>: <span id="victoryWave">1</span></div>
+  <div class="final-buttons">
+    <div class="start-btn secondary" id="victoryMenuBtn" data-i18n="menuBtn">МЕНЮ</div>
+    <div class="start-btn" id="victoryRetryBtn" data-i18n="retryBtn">ЗАНОВО</div>
+  </div>
+</div>
+
+<!-- Game Over -->
+<div class="screen-overlay dim hidden" id="gameOverScreen">
+  <div class="game-title" style="color:#ff4466;" data-i18n="gameOverTitle">GAME OVER</div>
+  <div class="game-subtitle" data-i18n="gameOverSubtitle"></div>
+  <div class="final-score" id="finalScore">0</div>
+  <div class="final-meta"><span data-i18n="finalWaveLabel">Волна</span>: <span id="finalWave">1</span></div>
+  <div class="final-buttons">
+    <div class="start-btn secondary" id="gameOverMenuBtn" data-i18n="menuBtn">МЕНЮ</div>
+    <div class="start-btn danger" id="restartBtn" data-i18n="retryBtn">ЗАНОВО</div>
+  </div>
+</div>
+
+<script src="i18n.js"></script>
+<script src="firebase-bridge.js"></script>
+<script src="audio.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
