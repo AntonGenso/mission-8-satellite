@@ -6,7 +6,7 @@ const ctx = canvas.getContext('2d');
 // === Состояние ===
 let W, H, CX, CY, ORBIT_R, SHIELD_R, SAT_SCALE;
 let running = false, score = 0, hp = 3, maxHp = 3, wave = 1;
-let satAngle = -Math.PI / 2, shdAngle = Math.PI / 2;
+let satAngle = -Math.PI / 2, shdAngle = -Math.PI / 2;
 let satSpeed = 0, shdSpeed = 0;
 const ROT_SPEED = 2.8, DAMPING = 0.88;
 let meteors = [], collectibles = [], particles = [], signals = [], floatingTexts = [];
@@ -322,11 +322,19 @@ function spawnMeteor() {
   const y = CY + Math.sin(angle) * ry;
   // Точное прицеливание в спутник с очень малым разбросом — метеориты летят прямо в цель
   const aimAngle = Math.atan2(CY - y, CX - x) + (Math.random() - 0.5) * 0.15;
-  // Скорость растёт плавно по игровому времени: 45 → 110 за первые 90 сек
-  // Очень медленный старт, плавный разгон. Бонус при счёте >= 90 (финальный челлендж).
-  const speedT = Math.min(1, time / 90);
-  let speed = 45 + speedT * 65 + Math.random() * 20;
-  if (score >= 90) speed *= 1.2;
+  // Скорость привязана к счёту, а не времени. Очень медленный старт, плавный разгон:
+  //   score 0-70:  40 → 65 px/sec (спокойно, ребёнок успевает реагировать)
+  //   score 70-90: 65 → 85 px/sec
+  //   score 90+:   85 → 110 px/sec (финальный напор)
+  let baseSpeed;
+  if (score < 70) {
+    baseSpeed = 40 + (score / 70) * 25; // 40 → 65
+  } else if (score < 90) {
+    baseSpeed = 65 + ((score - 70) / 20) * 20; // 65 → 85
+  } else {
+    baseSpeed = 85 + ((score - 90) / 10) * 25; // 85 → 110
+  }
+  const speed = baseSpeed + Math.random() * 15;
   const r = 8 + Math.random() * 6;
   const shape = [], verts = 6 + Math.floor(Math.random() * 4);
   for (let i = 0; i < verts; i++) {
@@ -462,30 +470,36 @@ function update(dt) {
   shieldHp = Math.max(0, shieldHp - SHIELD_DECAY_RATE * dt);
   updateShieldHPBar();
 
-  // Кривая сложности по игровому времени:
-  //   0-10 сек:   тишина — игрок осваивается, собирает очки
-  //   10-30 сек:  редкие медленные метеориты (3 сек между ними)
-  //   30-70 сек:  плавное уплотнение (3 → 0.9 сек)
-  //   70+ сек:    полноценный темп, появляются пачки
-  //   score>=90:  финальный челлендж — максимальная сложность
+  // Кривая сложности.
+  // Базовый принцип: бóльшую часть игры на экране 2-3 МЕДЛЕННЫХ одиночных метеорита.
+  // Настоящая интенсивность (частый спавн, пачки, скорость) — только в финале (score >= 70/90).
+  //
+  // Лимит метеоритов на экране — главный предохранитель:
+  //   обычная игра: максимум 3
+  //   финал (score >= 90): максимум 6
+  const meteorCap = score >= 90 ? 6 : 3;
+
   spawnTimer += dt;
   if (time >= 10) {
-    // Базовый интервал плавно сокращается с 3.0 сек до 0.9 сек за 60 секунд (с 10-й по 70-ю)
-    const t60 = Math.min(1, (time - 10) / 60); // 0 на 10-й сек, 1 на 70-й сек
-    let baseInterval = 3.0 - t60 * 2.1; // 3.0 → 0.9
-    // Финальный челлендж при счёте >= 90: ещё на 30% быстрее
-    if (score >= 90) baseInterval *= 0.7;
-    baseInterval = Math.max(0.45, baseInterval);
+    // Базовый интервал сокращается ОЧЕНЬ плавно, привязан к счёту, а не времени:
+    //   score 0-70:  интервал 2.6 → 1.8 сек (спокойно, одиночные)
+    //   score 70-90: интервал 1.8 → 1.2 сек (нарастание)
+    //   score 90+:   интервал 1.2 → 0.6 сек (финальный напор)
+    let baseInterval;
+    if (score < 70) {
+      baseInterval = 2.6 - (score / 70) * 0.8; // 2.6 → 1.8
+    } else if (score < 90) {
+      baseInterval = 1.8 - ((score - 70) / 20) * 0.6; // 1.8 → 1.2
+    } else {
+      baseInterval = 1.2 - ((score - 90) / 10) * 0.6; // 1.2 → 0.6
+    }
+    baseInterval = Math.max(0.5, baseInterval);
 
-    if (spawnTimer > baseInterval) {
+    if (spawnTimer > baseInterval && meteors.length < meteorCap) {
       spawnTimer = 0;
       spawnMeteor();
-      // Пачки метеоритов появляются только после 50 сек, шанс растёт со временем
-      const packT = Math.min(1, Math.max(0, (time - 50) / 40)); // 0 на 50 сек, 1 на 90 сек
-      if (time >= 50 && Math.random() < 0.3 * packT) spawnMeteor();
-      if (time >= 80 && Math.random() < 0.4 * packT) spawnMeteor();
-      // Финальный челлендж: гарантированная пачка
-      if (score >= 90 && Math.random() < 0.5) spawnMeteor();
+      // Пачки — ТОЛЬКО в финале (score >= 90), и то с лимитом на экране
+      if (score >= 90 && Math.random() < 0.5 && meteors.length < meteorCap) spawnMeteor();
     }
   } else {
     // В первые 10 сек таймер сбрасывается, чтобы первый метеор пришёл сразу после 10 сек
@@ -668,7 +682,7 @@ function showScreen(id) {
 
 function startGame() {
   score = 0; hp = maxHp; wave = 1; waveTimer = 0;
-  satAngle = -Math.PI / 2; shdAngle = Math.PI / 2; satSpeed = 0; shdSpeed = 0;
+  satAngle = -Math.PI / 2; shdAngle = -Math.PI / 2; satSpeed = 0; shdSpeed = 0;
   meteors = []; collectibles = []; particles = []; signals = []; floatingTexts = [];
   spawnTimer = 0; collectSpawnTimer = 0; shieldFlash = 0; damageFlash = 0; time = 0;
   invuln = 0; heartSpawnTimer = 0;
