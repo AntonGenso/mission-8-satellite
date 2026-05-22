@@ -12,12 +12,16 @@ const ROT_SPEED = 2.8, DAMPING = 0.88;
 let meteors = [], collectibles = [], particles = [], signals = [], floatingTexts = [];
 let shieldFlash = 0, damageFlash = 0, spawnTimer = 0, collectSpawnTimer = 0;
 let time = 0, lastTime = 0, stars = [], waveTimer = 0;
+let invuln = 0;            // таймер неуязвимости спутника (сек), >0 = неуязвим
+let heartSpawnTimer = 0;   // таймер спавна жизни-сердечка
 const WAVE_DURATION = 25;
+const INVULN_DURATION = 3.0;   // 3 секунды неуязвимости после попадания
+const HEART_SPAWN_INTERVAL = 30; // сердечко раз в ~30 сек
 
 const VICTORY_SCORE = 100;
 
 let shieldHp = 100;
-const SHIELD_MAX_HP = 100, SHIELD_DECAY_RATE = 1.2, SHIELD_BLOCK_DAMAGE = 8, SHIELD_REPAIR_AMOUNT = 30;
+const SHIELD_MAX_HP = 100, SHIELD_DECAY_RATE = 1.0, SHIELD_BLOCK_DAMAGE = 6, SHIELD_REPAIR_AMOUNT = 30;
 
 // Балансировка очков (1 балл за любой собранный элемент, без комбо)
 const SCORE_VALUES = { crystal: 1, data: 1, satellite: 1, repair: 1 };
@@ -69,6 +73,10 @@ function drawCenter() {
 function drawSatellite() {
   const s = SAT_SCALE;
   ctx.save(); ctx.translate(CX, CY); ctx.rotate(satAngle + Math.PI / 2); ctx.scale(s, s);
+  // При неуязвимости спутник мигает (классика аркад)
+  if (invuln > 0) {
+    ctx.globalAlpha = 0.35 + Math.abs(Math.sin(time * 18)) * 0.65;
+  }
   ctx.fillStyle = '#1155aa'; ctx.strokeStyle = '#2288dd'; ctx.lineWidth = 1 / s;
   ctx.fillRect(-14, -4, 10, 8); ctx.strokeRect(-14, -4, 10, 8);
   ctx.fillRect(4, -4, 10, 8); ctx.strokeRect(4, -4, 10, 8);
@@ -225,9 +233,27 @@ function drawCollectible(c) {
     ctx.fillStyle = '#ffcc00'; ctx.fillRect(-3, -8, 6, 16);
     ctx.fillStyle = '#ffaa00'; ctx.fillRect(-10, -3, 7, 6); ctx.fillRect(3, -3, 7, 6);
     ctx.strokeStyle = '#ffdd66'; ctx.lineWidth = 0.5; ctx.strokeRect(-10, -3, 7, 6); ctx.strokeRect(3, -3, 7, 6);
+  } else if (c.type === 'heart') {
+    ctx.scale(pulse, pulse);
+    // Красное сердце (path из двух дуг + клин вниз)
+    ctx.beginPath();
+    ctx.moveTo(0, 6);
+    ctx.bezierCurveTo(-9, -2, -7, -10, 0, -5);
+    ctx.bezierCurveTo(7, -10, 9, -2, 0, 6);
+    ctx.closePath();
+    const hg = ctx.createLinearGradient(0, -8, 0, 8);
+    hg.addColorStop(0, '#ff6688'); hg.addColorStop(1, '#dd2244');
+    ctx.fillStyle = hg; ctx.fill();
+    ctx.strokeStyle = '#ff99aa'; ctx.lineWidth = 1; ctx.stroke();
+    // Блик
+    ctx.beginPath(); ctx.arc(-3, -3, 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,220,230,0.8)'; ctx.fill();
+    const hglow = ctx.createRadialGradient(0, 0, 0, 0, 0, 15);
+    hglow.addColorStop(0, 'rgba(255,80,110,0.4)'); hglow.addColorStop(1, 'rgba(221,34,68,0)');
+    ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.fillStyle = hglow; ctx.fill();
   }
   ctx.beginPath(); ctx.arc(0, 0, 16 * pulse, 0, Math.PI * 2);
-  const cols = { crystal: '170,100,255', data: '50,220,100', satellite: '255,200,0', repair: '255,170,50' };
+  const cols = { crystal: '170,100,255', data: '50,220,100', satellite: '255,200,0', repair: '255,170,50', heart: '255,70,100' };
   ctx.strokeStyle = `rgba(${cols[c.type]},${0.15 + Math.sin(time * 3) * 0.05})`; ctx.lineWidth = 1; ctx.stroke();
 
   if (!c.collected && c.maxLife) {
@@ -310,13 +336,8 @@ function spawnMeteor() {
   meteors.push({ x, y, dx: Math.cos(aimAngle) * speed, dy: Math.sin(aimAngle) * speed, r, rot: Math.random() * Math.PI * 2, rotSpeed: (Math.random() - 0.5) * 3, shape, alpha: 1 });
 }
 
-function spawnCollectible() {
-  const types = ['crystal', 'data', 'satellite', 'repair'];
-  const repairW = shieldHp < 50 ? 0.3 : 0.15;
-  const weights = [0.4, 0.25, 0.07, repairW];
-  const totalW = weights.reduce((a, b) => a + b, 0);
-  let rnd = Math.random() * totalW, type = types[0], cum = 0;
-  for (let i = 0; i < types.length; i++) { cum += weights[i]; if (rnd < cum) { type = types[i]; break; } }
+// Подбирает свободную позицию для коллектибла (не на спутнике)
+function pickCollectiblePos() {
   const pad = 30, ctrlH = 130, topH = 70;
   const minX = pad, maxX = W - pad, minY = topH + pad, maxY = H - ctrlH - pad;
   const satBodyR = 14 * SAT_SCALE + 20;
@@ -326,8 +347,36 @@ function spawnCollectible() {
     cy = minY + Math.random() * (maxY - minY);
     attempts++;
   } while (Math.sqrt((cx - CX) ** 2 + (cy - CY) ** 2) < satBodyR && attempts < 20);
+  return { cx, cy };
+}
+
+function spawnCollectible() {
+  const types = ['crystal', 'data', 'satellite', 'repair'];
+  // Гибридный баланс ремкомплектов:
+  //   щит > 60%  — repair редкий (вес 0.25)
+  //   щит 30-60% — repair заметный (вес 0.5)
+  //   щит < 30%  — repair частый, приоритет выживания (вес 1.0)
+  let repairW;
+  const shieldPct = shieldHp / SHIELD_MAX_HP;
+  if (shieldPct > 0.6) repairW = 0.25;
+  else if (shieldPct > 0.3) repairW = 0.5;
+  else repairW = 1.0;
+
+  const weights = [0.4, 0.25, 0.07, repairW];
+  const totalW = weights.reduce((a, b) => a + b, 0);
+  let rnd = Math.random() * totalW, type = types[0], cum = 0;
+  for (let i = 0; i < types.length; i++) { cum += weights[i]; if (rnd < cum) { type = types[i]; break; } }
+
+  const { cx, cy } = pickCollectiblePos();
   const maxLife = 6 + Math.random() * 3;
   collectibles.push({ x: cx, y: cy, type, r: 14, alpha: 1, phase: Math.random() * Math.PI * 2, life: maxLife, maxLife: maxLife, collected: false, collectAnim: 0 });
+}
+
+// Спавн жизни-сердечка (редко, отдельным таймером)
+function spawnHeart() {
+  const { cx, cy } = pickCollectiblePos();
+  const maxLife = 7 + Math.random() * 3; // живёт чуть дольше — его важно успеть поймать
+  collectibles.push({ x: cx, y: cy, type: 'heart', r: 14, alpha: 1, phase: Math.random() * Math.PI * 2, life: maxLife, maxLife: maxLife, collected: false, collectAnim: 0 });
 }
 
 function emitParticles(x, y, color, count, speed) {
@@ -453,6 +502,14 @@ function update(dt) {
   collectSpawnTimer += dt;
   if (collectSpawnTimer > collectInterval) { collectSpawnTimer = 0; spawnCollectible(); }
 
+  // Жизнь-сердечко: спавнится раз в ~30 сек. Спавнится всегда (даже при 3 HP),
+  // но при сборе с полным HP жизнь не прибавляется (проверка при сборе).
+  heartSpawnTimer += dt;
+  if (heartSpawnTimer > HEART_SPAWN_INTERVAL) {
+    heartSpawnTimer = 0;
+    spawnHeart();
+  }
+
   // Meteors
   for (let i = meteors.length - 1; i >= 0; i--) {
     const m = meteors[i]; m.x += m.dx * dt; m.y += m.dy * dt; m.rot += m.rotSpeed * dt;
@@ -473,6 +530,12 @@ function update(dt) {
     }
     const hitR = 14 * SAT_SCALE;
     if (dist < hitR) {
+      if (invuln > 0) {
+        // Спутник неуязвим — метеорит исчезает без урона (вариант B)
+        emitParticles(m.x, m.y, '120,180,255', 8, 60);
+        meteors.splice(i, 1);
+        continue;
+      }
       hp--; damageFlash = 1;
       emitParticles(CX, CY, '255,50,30', 25, 150);
       addFloatingText(CX, CY - 30, t('damageText'), '#ff4466', 18);
@@ -480,6 +543,8 @@ function update(dt) {
       Audio.damage();
       meteors.splice(i, 1);
       if (hp <= 0) { gameOver(); return; }
+      // Неуязвимость даётся только если спутник выжил
+      invuln = INVULN_DURATION;
       continue;
     }
     if (m.x < -100 || m.x > W + 100 || m.y < -100 || m.y > H + 100) meteors.splice(i, 1);
@@ -499,6 +564,23 @@ function update(dt) {
     if (c.life <= 0) { collectibles.splice(i, 1); continue; }
     if (checkSignalHit(c)) {
       c.collected = true;
+
+      // Жизнь-сердечко — обрабатывается отдельно, очков не даёт
+      if (c.type === 'heart') {
+        if (hp < maxHp) {
+          hp++;
+          updateHP();
+          addFloatingText(c.x, c.y - 25, '+1 ❤️', '#ff4466', 18);
+          Audio.collectBig();
+        } else {
+          // HP уже максимум — жизнь не прибавляется
+          addFloatingText(c.x, c.y - 25, 'MAX ❤️', '#ff8899', 14);
+          Audio.collect();
+        }
+        emitParticles(c.x, c.y, '255,70,100', 14, 90);
+        continue;
+      }
+
       const colors = { crystal: '#dd88ff', data: '#44ff88', satellite: '#ffcc00', repair: '#ffaa33' };
       const names = { crystal: '💎', data: '📦', satellite: '🛰', repair: '🔧' };
       const pts = SCORE_VALUES[c.type];
@@ -542,6 +624,7 @@ function update(dt) {
 
   shieldFlash = Math.max(0, shieldFlash - dt * 4);
   damageFlash = Math.max(0, damageFlash - dt * 2);
+  invuln = Math.max(0, invuln - dt);
   document.getElementById('scoreValue').textContent = score;
   // Звёзды: мерцание + медленный дрейф снизу вверх (эффект движения)
   for (const s of stars) {
@@ -588,6 +671,7 @@ function startGame() {
   satAngle = -Math.PI / 2; shdAngle = Math.PI / 2; satSpeed = 0; shdSpeed = 0;
   meteors = []; collectibles = []; particles = []; signals = []; floatingTexts = [];
   spawnTimer = 0; collectSpawnTimer = 0; shieldFlash = 0; damageFlash = 0; time = 0;
+  invuln = 0; heartSpawnTimer = 0;
   shieldHp = SHIELD_MAX_HP;
   updateHP(); updateShieldHPBar();
   document.getElementById('scoreValue').textContent = '0';
