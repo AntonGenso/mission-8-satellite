@@ -38,10 +38,13 @@
   .arrow-icon { width: 24px; height: 24px; }
 
   /* Кнопка mute */
-  .mute-btn { position: fixed; top: 12px; right: 100px; width: 32px; height: 32px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.5); color: #ccc; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 200; pointer-events: auto; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); transition: all 0.2s; }
+  .mute-btn { position: fixed; top: 12px; right: 100px; width: 32px; height: 32px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.5); color: #ccc; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 200; pointer-events: auto; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); transition: top 0.2s, right 0.2s, transform 0.1s, background 0.1s; }
   .mute-btn:active { transform: scale(0.92); background: rgba(255,255,255,0.1); }
   .mute-btn.muted { color: #666; }
-  .screen-overlay .mute-btn { top: 16px; right: 16px; }
+  /* В меню и на финальных экранах (когда HP не виден) кнопка идёт в правый угол */
+  body:has(#startScreen:not(.hidden)) .mute-btn,
+  body:has(#victoryScreen:not(.hidden)) .mute-btn,
+  body:has(#gameOverScreen:not(.hidden)) .mute-btn { right: 12px; top: 12px; }
 
   /* === Стартовый экран с фоном === */
   .screen-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; pointer-events: auto; padding: 20px; display: flex; flex-direction: column; align-items: center; }
