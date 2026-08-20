@@ -7,7 +7,10 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;700&display=swap');
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #0B1F3A; font-family: 'Exo 2', sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  html { width: 100%; height: 100%; overflow: hidden; background: #060d1a; }
+  /* центрированная «телефонная» колонка: на десктопе 480px, на мобиле весь экран.
+     transform делает body якорем для position:fixed потомков (оверлеи, кнопки). */
+  body { width: 100%; max-width: 480px; height: 100%; margin: 0 auto; overflow: hidden; background: #0B1F3A; font-family: 'Exo 2', sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; position: relative; transform: translateZ(0); box-shadow: 0 0 60px rgba(0,0,0,.85); }
   canvas { display: block; width: 100%; height: 100%; }
 
   /* === In-game UI === */

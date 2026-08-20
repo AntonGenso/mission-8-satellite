@@ -31,7 +31,7 @@ const inputState = { 'sat-ccw': false, 'sat-cw': false, 'shd-ccw': false, 'shd-c
 // === Resize / canvas ===
 function resize() {
   const dpr = window.devicePixelRatio || 1;
-  W = window.innerWidth; H = window.innerHeight;
+  W = document.body.clientWidth; H = document.body.clientHeight; // размеры колонки, не окна
   canvas.width = W * dpr; canvas.height = H * dpr;
   canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
